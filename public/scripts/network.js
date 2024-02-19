@@ -18,7 +18,7 @@ class ServerConnection {
 
         Events.on('create-public-room', _ => this._onCreatePublicRoom());
         Events.on('join-public-room', e => this._onJoinPublicRoom(e.detail.roomId, e.detail.createIfInvalid));
-        Events.on('leave-public-room', _ => this._onLeavePublicRoom());
+        Events.on('leave-public-room', e => this._onLeavePublicRoom(e.detail.publicRoomId));
 
         Events.on('offline', _ => clearTimeout(this._reconnectTimer));
         Events.on('online', _ => this._connect());
@@ -126,12 +126,12 @@ class ServerConnection {
         this.send({ type: 'join-public-room', publicRoomId: roomId, createIfInvalid: createIfInvalid });
     }
 
-    _onLeavePublicRoom() {
+    _onLeavePublicRoom(publicRoomId) {
         if (!this._isConnected()) {
             setTimeout(() => this._onLeavePublicRoom(), 1000);
             return;
         }
-        this.send({ type: 'leave-public-room' });
+        this.send({ type: 'leave-public-room', publicRoomId: publicRoomId });
     }
 
     _onMessage(message) {
@@ -1501,7 +1501,7 @@ class PeersManager {
 
         // this device closes connection
         Events.on('room-secrets-deleted', e => this._onRoomSecretsDeleted(e.detail));
-        Events.on('leave-public-room', e => this._onLeavePublicRoom(e.detail));
+        Events.on('leave-public-room', e => this._onLeavePublicRoom(e.detail.publicRoomId));
 
         // peer closes connection
         Events.on('secret-room-deleted', e => this._onSecretRoomDeleted(e.detail));
@@ -1664,7 +1664,7 @@ class PeersManager {
     }
 
     _onRoomSecretsDeleted(roomSecrets) {
-        for (let i=0; i<roomSecrets.length; i++) {
+        for (let i = 0; i < roomSecrets.length; i++) {
             this._disconnectOrRemoveRoomTypeByRoomId('secret', roomSecrets[i]);
         }
     }
@@ -1682,7 +1682,7 @@ class PeersManager {
 
         if (!peerIds.length) return;
 
-        for (let i=0; i<peerIds.length; i++) {
+        for (let i = 0; i < peerIds.length; i++) {
             this._disconnectOrRemoveRoomTypeByPeerId(peerIds[i], roomType);
         }
     }
@@ -1690,7 +1690,7 @@ class PeersManager {
     _disconnectOrRemoveRoomTypeByPeerId(peerId, roomType) {
         const peer = this.peers[peerId];
 
-        if (!peer) return;
+        if (!peer || !peer._getRoomTypes().includes(roomType)) return;
 
         if (peer._getRoomTypes().length > 1) {
             peer._removeRoomType(roomType);
@@ -1729,11 +1729,23 @@ class PeersManager {
     }
 
     _onAutoAcceptUpdated(roomSecret, autoAccept) {
-        const peerId = this._getPeerIdsFromRoomId(roomSecret)[0];
+        let peerIds = this._getPeerIdsFromRoomId(roomSecret);
+        const peerId = this._removePeerIdsSameBrowser(peerIds)[0];
 
         if (!peerId) return;
 
         this.peers[peerId]._setAutoAccept(autoAccept);
+    }
+
+    _removePeerIdsSameBrowser(peerIds) {
+        let peerIdsNotSameBrowser = [];
+        for (let i = 0; i < peerIds.length; i++) {
+            const peer = this.peers[peerIds[i]];
+            if (!peer._isSameBrowser()) {
+                peerIdsNotSameBrowser.push(peerIds[i]);
+            }
+        }
+        return peerIdsNotSameBrowser;
     }
 
     _getPeerIdsFromRoomId(roomId) {

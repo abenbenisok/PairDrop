@@ -86,7 +86,7 @@ export default class PairDropWsServer {
                 this._onJoinPublicRoom(sender, message);
                 break;
             case 'leave-public-room':
-                this._onLeavePublicRoom(sender);
+                this._onLeavePublicRoom(sender, message);
                 break;
             case 'signal':
                 this._signalAndWsRelay(sender, message);
@@ -251,11 +251,13 @@ export default class PairDropWsServer {
             return;
         }
 
-        this._leavePublicRoom(sender);
+        this._leavePublicRoom(sender, true);
         this._joinPublicRoom(sender, message.publicRoomId);
     }
 
-    _onLeavePublicRoom(sender) {
+    _onLeavePublicRoom(sender, message) {
+        if (sender.publicRoomId !== message.publicRoomId) return;
+
         this._leavePublicRoom(sender, true);
         this._send(sender, { type: 'public-room-left' });
     }

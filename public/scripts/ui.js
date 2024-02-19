@@ -2046,8 +2046,8 @@ class PublicRoomDialog extends Dialog {
 
         Events.on('keydown', e => this._onKeyDown(e));
         Events.on('public-room-created', e => this._onPublicRoomCreated(e.detail));
-        Events.on('peers', e => this._onPeers(e.detail));
-        Events.on('peer-joined', e => this._onPeerJoined(e.detail.peer, e.detail.roomId));
+        Events.on('peers', e => this._onPeers(e.detail.peers, e.detail.roomId));
+        Events.on('peer-joined', e => this._onPeerJoined(e.detail.roomId));
         Events.on('public-room-id-invalid', e => this._onPublicRoomIdInvalid(e.detail));
         Events.on('public-room-left', _ => this._onPublicRoomLeft());
         this.$el.addEventListener('paste', e => this._onPaste(e));
@@ -2147,7 +2147,6 @@ class PublicRoomDialog extends Dialog {
 
         if (!roomId) return;
 
-        this.roomId = roomId;
         this._setKeyAndQrCode();
 
         this._joinPublicRoom(roomId, true);
@@ -2177,29 +2176,36 @@ class PublicRoomDialog extends Dialog {
         }
     }
 
-    _onPeers(message) {
-        message.peers.forEach(messagePeer => {
-            this._evaluateJoinedPeer(messagePeer.id, message.roomId);
-        });
+    _onPeers(peers, roomId) {
+        // Do not evaluate if creating new room
+        if (this.roomId && !peers.length) return;
+
+        this._evaluateJoinedPeer(roomId);
     }
 
-    _onPeerJoined(peer, roomId) {
-        this._evaluateJoinedPeer(peer.id, roomId);
+    _onPeerJoined(roomId) {
+        this._evaluateJoinedPeer(roomId);
     }
 
-    _evaluateJoinedPeer(peerId, roomId) {
-        const isInitiatedRoomId = roomId === this.roomId;
-        const isJoinedRoomId = roomId === this.roomIdJoin;
+    _evaluateJoinedPeer(roomId) {
+        const peerJoinedThisRoom = roomId === this.roomId;
+        const userJoinedOtherRoom = roomId === this.roomIdJoin;
 
-        if (!peerId || !roomId || (!isInitiatedRoomId && !isJoinedRoomId)) return;
+        if (!roomId || (!peerJoinedThisRoom && !userJoinedOtherRoom)) return;
 
         this.hide();
 
         sessionStorage.setItem('public_room_id', roomId);
 
-        if (isJoinedRoomId) {
+
+        if (userJoinedOtherRoom) {
+            // When switching rooms: Disconnect devices in old public room
+            if (this.roomId && roomId !== this.roomId) {
+                Events.fire('leave-public-room', { publicRoomId: this.roomId });
+            }
+
+            this.roomIdJoin = null;
             this.roomId = roomId;
-            this.roomIdJoin = false;
             this._setKeyAndQrCode();
         }
     }
@@ -2212,7 +2218,7 @@ class PublicRoomDialog extends Dialog {
     }
 
     _leavePublicRoom() {
-        Events.fire('leave-public-room', this.roomId);
+        Events.fire('leave-public-room', { publicRoomId: this.roomId });
     }
 
     _onPublicRoomLeft() {
